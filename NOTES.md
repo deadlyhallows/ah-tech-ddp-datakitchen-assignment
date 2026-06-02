@@ -29,7 +29,11 @@
 
 ## Bonus — `deploy.yaml` bug
 
-Not addressed in this pass; flag in review if still present.
+**Bug:** The `plan` job wrote `terraform/tfplan` and uploaded it as an artifact, but `apply` ignored that file and ran `terraform apply -auto-approve` with inline `-var` flags instead. Apply therefore recomputed changes at deploy time rather than executing the plan reviewers saw.
+
+**Production impact:** Operators could approve a PR plan showing one set of catalog/table changes while production received a different outcome — for example if state drifted between jobs, if another merge landed before apply, or if plan and apply ran on different checkouts. Failures might be silent (wrong schema or load_mode metadata) rather than a hard Terraform error.
+
+**Fix:** Download the `tfplan` artifact in `apply` and run `terraform apply -auto-approve tfplan` so apply is bound to the saved plan output.
 
 ## AI assistant usage
 
