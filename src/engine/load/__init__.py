@@ -11,6 +11,7 @@ from engine.errors import LoadError
 from engine.load.base import Loader
 from engine.load.full import FullLoader
 from engine.load.full_compare import FullCompareLoader
+from engine.load.soft_delete import SoftDeleteLoader
 
 
 def get_loader(mode: LoadMode, primary_keys: list[str]) -> Loader:
@@ -27,6 +28,8 @@ def get_loader(mode: LoadMode, primary_keys: list[str]) -> Loader:
         return FullLoader()
     if mode == LoadMode.FULL_COMPARE:
         return FullCompareLoader(primary_keys=primary_keys)
+    if mode == LoadMode.SOFT_DELETE:
+        return SoftDeleteLoader(primary_keys=primary_keys)
     raise LoadError(f"No loader registered for load mode {mode.value!r}.")
 
 
@@ -34,5 +37,6 @@ __all__ = [
     "FullCompareLoader",
     "FullLoader",
     "Loader",
+    "SoftDeleteLoader",
     "get_loader",
 ]

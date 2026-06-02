@@ -2,28 +2,35 @@
 
 ## Design
 
-<!-- What load mode name and YAML interface did you give domain teams?
-     What does the deletion marker look like — engine-injected columns or
-     domain-declared? Why did you pick that approach over the alternatives? -->
+- **YAML interface:** domain teams set `refresh.mode: soft_delete` on the model (same pattern as `full` / `full_compare`). They declare **primary keys** on merge key columns with `primary_key: true`, exactly like `full_compare`.
+- **Deletion marker:** the engine injects a single nullable **`TIMESTAMP`** column **`_deleted_at`** on the Delta target. It is **not** declared in model YAML — the loader adds it via `ALTER TABLE` when missing so existing tables can migrate without a Terraform column list change for that field.
+  - **`NULL`** → row is **active** (present in source, or restored after reappearance).
+  - **Non-null** → row is **inactive**; the value is the UTC instant when the row was **first** seen absent from the source (not updated on later runs — idempotency).
+- **Runtime behaviour:** two Delta `MERGE` passes:
+  1. **Upsert from source** (match on PKs): update all business columns from source, force `_deleted_at = NULL` (covers inserts, updates, and **reappearance** after soft delete).
+  2. **Anti-join keys only:** rows in target with no matching source key and `_deleted_at IS NULL` get `_deleted_at` set to “now” once (`whenNotMatchedBySourceUpdate` with that condition).
 
 ## Trade-offs
 
-<!-- What did you deliberately *not* do, and under what conditions would you
-     revisit it? -->
+- **Engine-owned column name** (`_deleted_at`) avoids YAML/schema drift and keeps domain YAML minimal; downside is a fixed name if two conventions collide (unlikely with a single platform column).
+- **Two MERGE passes** instead of one large expression — simpler to reason about and test; small extra scan cost.
+- **Timestamp via SQL literal** in the merge `set` map — avoids passing `Column` objects into Delta’s string-based merge API; microsecond formatting is tied to Spark’s cast rules.
 
 ## Risk
 
-<!-- Where is your implementation most fragile, and how would you harden it? -->
+- **Clock semantics:** “first seen absent” uses the cluster clock at load time. For strict audit alignment with an upstream business timestamp, you might pass a logical “as-of” time in a future API (out of scope here).
+- **ALTER TABLE path** assumes Delta + permissions compatible with `ADD COLUMN` on the target path used in tests and Databricks.
 
 ## Follow-ups
 
-<!-- What would you tackle in the next sprint? -->
+- Integration test against Unity Catalog table paths if behaviour differs from local `delta.` paths.
+- Optional config for deletion column name (with guardrails) if product needs it.
+- Document `_deleted_at` in operator runbooks and BI contracts (filter `WHERE _deleted_at IS NULL` for current-state views).
 
 ## Bonus — `deploy.yaml` bug
 
-<!-- There is a bug in deploy.yaml that causes silent failures. If you spot it, explain the
-     production impact and how you fixed it. -->
+Not addressed in this pass; flag in review if still present.
 
 ## AI assistant usage
 
-<!-- If you used an AI assistant, tell us how — it's expected, not penalised. -->
+Used for implementation scaffolding, tests, and doc alignment with the repo’s patterns.

@@ -9,6 +9,7 @@ load mode.
 from __future__ import annotations
 
 import pytest
+from pyspark.sql import functions as F
 
 from engine.config.enums import LoadMode
 from engine.load import get_loader
@@ -79,3 +80,91 @@ def test_full_compare_is_idempotent(spark, seeded_target):
     loader.run(source, seeded_target)
 
     assert _read(spark, seeded_target).count() == 3
+
+
+def test_soft_delete_inserts_updates_and_marks_absent(spark, seeded_target):
+    """Inserts, updates, soft-deletes absent rows; ``_deleted_at`` only when absent."""
+    source = spark.createDataFrame(
+        [
+            (1, "alice@x.com", "NL"),
+            (2, "bob@new.com", "BE"),
+            (4, "dave@x.com", "DE"),
+        ],
+        ["customer_id", "email", "country"],
+    )
+    loader = get_loader(LoadMode.SOFT_DELETE, primary_keys=["customer_id"])
+    loader.run(source, seeded_target)
+
+    out = _read(spark, seeded_target)
+    assert out.count() == 4
+
+    active = {
+        (r["customer_id"], r["email"], r["country"])
+        for r in out.filter(F.col("_deleted_at").isNull()).collect()
+    }
+    assert active == {
+        (1, "alice@x.com", "NL"),
+        (2, "bob@new.com", "BE"),
+        (4, "dave@x.com", "DE"),
+    }
+
+    deleted = out.filter(
+        (F.col("customer_id") == 3) & F.col("_deleted_at").isNotNull()
+    ).collect()
+    assert len(deleted) == 1
+
+
+def test_soft_delete_reappearance_clears_deleted_at(spark, seeded_target):
+    """A row that was soft-deleted becomes active again when it returns to source."""
+    shrink = spark.createDataFrame(
+        [(1, "alice@x.com", "NL"), (2, "bob@x.com", "BE")],
+        ["customer_id", "email", "country"],
+    )
+    restore = spark.createDataFrame(
+        [
+            (1, "alice@x.com", "NL"),
+            (2, "bob@x.com", "BE"),
+            (3, "carol@restored.com", "NL"),
+        ],
+        ["customer_id", "email", "country"],
+    )
+    loader = get_loader(LoadMode.SOFT_DELETE, primary_keys=["customer_id"])
+
+    loader.run(shrink, seeded_target)
+    loader.run(restore, seeded_target)
+
+    row3 = (
+        _read(spark, seeded_target)
+        .filter("customer_id = 3")
+        .select("email", "_deleted_at")
+        .collect()[0]
+    )
+    assert row3["email"] == "carol@restored.com"
+    assert row3["_deleted_at"] is None
+
+
+def test_soft_delete_idempotent_for_deleted_timestamp(spark, seeded_target):
+    """Re-running with the same source does not move ``_deleted_at`` on soft deletes."""
+    shrink = spark.createDataFrame(
+        [(1, "alice@x.com", "NL"), (2, "bob@x.com", "BE")],
+        ["customer_id", "email", "country"],
+    )
+    loader = get_loader(LoadMode.SOFT_DELETE, primary_keys=["customer_id"])
+
+    loader.run(shrink, seeded_target)
+    first = (
+        _read(spark, seeded_target)
+        .filter("customer_id = 3")
+        .select("_deleted_at")
+        .collect()[0]["_deleted_at"]
+    )
+
+    loader.run(shrink, seeded_target)
+    second = (
+        _read(spark, seeded_target)
+        .filter("customer_id = 3")
+        .select("_deleted_at")
+        .collect()[0]["_deleted_at"]
+    )
+
+    assert first == second
