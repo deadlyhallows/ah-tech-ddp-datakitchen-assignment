@@ -33,9 +33,8 @@ Every load mode must plug into all three points:
 |------|-----------|
 | `full` | Truncate and rewrite the target from the source DataFrame. |
 | `full_compare` | Delta `MERGE`: insert new rows, update changed rows, physically delete rows absent from source. Requires primary keys. |
-| `soft_delete` | Delta `MERGE`: upsert from source and clear `_deleted_at`; absent keys are retained and stamped once with `_deleted_at`. Requires primary keys. |
 
-`full`, `full_compare`, and `soft_delete` are covered in [`tests/test_load.py`](tests/test_load.py) (and config tests for the new mode).
+Both have tests in [`tests/test_load.py`](tests/test_load.py).
 
 ## Conventions
 
