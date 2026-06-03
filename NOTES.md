@@ -35,6 +35,8 @@
 
 **Fix:** Download the `tfplan` artifact in `apply` and run `terraform apply -auto-approve tfplan` so apply is bound to the saved plan output.
 
+**Note:** `deploy.yaml`’s header comment says it runs on merges to `main`, but `on: pull_request` means plan/apply run on PRs (good for reviewing Terraform before merge), not automatically after merge — left as-is for this assessment; production would typically use `push` to `main` for post-merge deploy.
+
 ## AI assistant usage
 
 Used for implementation scaffolding, tests, and doc alignment with the repo’s patterns.

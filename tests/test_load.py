@@ -168,3 +168,37 @@ def test_soft_delete_idempotent_for_deleted_timestamp(spark, seeded_target):
     )
 
     assert first == second
+
+
+def test_soft_delete_idempotent_for_active_rows(spark, seeded_target):
+    """Re-running with the full source leaves active rows unchanged."""
+    source = spark.createDataFrame(
+        [(1, "alice@x.com", "NL"), (2, "bob@x.com", "BE"), (3, "carol@x.com", "NL")],
+        ["customer_id", "email", "country"],
+    )
+    loader = get_loader(LoadMode.SOFT_DELETE, primary_keys=["customer_id"])
+
+    loader.run(source, seeded_target)
+    after_first = _rows(
+        _read(spark, seeded_target).filter(F.col("_deleted_at").isNull()),
+        "customer_id",
+        "email",
+        "country",
+    )
+
+    loader.run(source, seeded_target)
+    after_second = _rows(
+        _read(spark, seeded_target).filter(F.col("_deleted_at").isNull()),
+        "customer_id",
+        "email",
+        "country",
+    )
+
+    expected = [
+        (1, "alice@x.com", "NL"),
+        (2, "bob@x.com", "BE"),
+        (3, "carol@x.com", "NL"),
+    ]
+    assert after_first == expected
+    assert after_second == expected
+    assert after_first == after_second
