@@ -38,6 +38,40 @@ def test_full_compare_without_primary_keys_is_rejected():
         ModelConfig(**raw)
 
 
+def test_soft_delete_config_loads(models_dir):
+    config = load_config(models_dir / "fct_inventory_soft.yaml")
+    assert config.refresh.mode == LoadMode.SOFT_DELETE
+    assert config.primary_keys == ["sku_id"]
+
+
+def test_soft_delete_without_primary_keys_is_rejected():
+    raw = {
+        "layer": "silver",
+        "name": "no_pk_soft",
+        "refresh": {"mode": "soft_delete"},
+        "columns": [{"name": "x", "data_type": "string"}],
+    }
+    with pytest.raises(ValueError, match="primary_key"):
+        ModelConfig(**raw)
+
+
+def test_load_config_soft_delete_error_includes_source(tmp_path):
+    path = tmp_path / "bad_soft.yaml"
+    path.write_text(
+        "layer: silver\n"
+        "name: bad_soft\n"
+        "refresh:\n"
+        "  mode: soft_delete\n"
+        "columns:\n"
+        "  - name: x\n"
+        "    data_type: string\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(path)
+    assert str(path) in str(exc_info.value)
+
+
 def test_unknown_field_is_rejected():
     raw = {
         "layer": "bronze",

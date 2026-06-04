@@ -78,16 +78,15 @@ class ModelConfig(ConfigBaseModel):
         return [c.name for c in self.columns if c.primary_key]
 
     @model_validator(mode="after")
-    def _validate_mode_requirements(self) -> ModelConfig:
-        """Cross-field validation for load modes that have extra rules.
-
-        ``full_compare`` can only produce correct results if it has at
-        least one primary key to match source rows against target rows.
-        """
-        if self.refresh.mode == LoadMode.FULL_COMPARE and not self.primary_keys:
+    def _validate_primary_keys_for_keyed_load_modes(self) -> ModelConfig:
+        """Merge-based modes need primary keys to match source to target rows."""
+        if (
+            self.refresh.mode in (LoadMode.FULL_COMPARE, LoadMode.SOFT_DELETE)
+            and not self.primary_keys
+        ):
             msg = (
-                "Load mode 'full_compare' requires at least one column "
-                "marked primary_key: true."
+                f"Model '{self.name}': load_mode {self.refresh.mode.value!r} "
+                "requires at least one column with primary_key: true."
             )
             raise ValueError(msg)
         return self

@@ -1,0 +1,13 @@
+layer: silver
+name: fct_inventory_soft
+description: Example inventory facts using soft_delete for audit-friendly retention.
+refresh:
+  mode: soft_delete
+columns:
+  - name: sku_id
+    data_type: string
+    nullable: false
+    primary_key: true
+  - name: quantity
+    data_type: int
+    nullable: true
